@@ -46,14 +46,27 @@ class TechDocsCore(BasePlugin):
                 '"site_description": (config.site_description | string)} | tojson }}'
             )
 
-        mdx_configs_override = {}
-        if "mdx_configs" in config:
-            mdx_configs_override = config["mdx_configs"].copy()
-
-        # Pymdown snippets override to prevent legacy behavior impacting security https://github.com/facelessuser/pymdown-extensions/security/advisories/GHSA-jh85-wwv9-24hv
-        mdx_configs_override["pymdownx.snippets"] = {
-            "restrict_base_path": True,
+        # Core configurations that should take precedence
+        core_configs = {
+            "pymdownx.snippets": {
+                "restrict_base_path": True,
+            },
+            # Add other core configurations here if needed
         }
+
+        # Merge core configurations with user configurations
+        def merge_configs(core, user):
+            for key, value in core.items():
+                if isinstance(value, dict) and key in user:
+                    merge_configs(value, user[key])
+                else:
+                    user[key] = value
+
+        # Apply core configurations
+        if "mdx_configs" not in config:
+            config["mdx_configs"] = {}
+
+        merge_configs(core_configs, config["mdx_configs"])
 
         # Theme
         if config["theme"].name != TECHDOCS_DEFAULT_THEME:
@@ -96,45 +109,37 @@ class TechDocsCore(BasePlugin):
         if "markdown_extensions" not in config:
             config["markdown_extensions"] = []
 
-        if "mdx_configs" not in config:
-            config["mdx_configs"] = {}
+        def merge_extension(extension, default_config):
+            if extension not in config["markdown_extensions"]:
+                config["markdown_extensions"].append(extension)
+            if extension in config["mdx_configs"]:
+                config["mdx_configs"][extension].update(default_config)
+            else:
+                config["mdx_configs"][extension] = default_config
 
-        config["markdown_extensions"].append("admonition")
-        config["markdown_extensions"].append("toc")
-        config["mdx_configs"]["toc"] = {
-            "permalink": True,
-        }
+        merge_extension("admonition", {})
+        merge_extension("toc", {"permalink": True})
+        merge_extension("pymdownx.caret", {})
+        merge_extension("pymdownx.critic", {})
+        merge_extension("pymdownx.details", {})
+        merge_extension("pymdownx.emoji", {"emoji_generator": to_svg})
+        merge_extension("pymdownx.inlinehilite", {})
+        merge_extension("pymdownx.magiclink", {})
+        merge_extension("pymdownx.mark", {})
+        merge_extension("pymdownx.smartsymbols", {})
+        merge_extension("pymdownx.snippets", {})
+        merge_extension(
+            "pymdownx.highlight", {"linenums": True, "pygments_lang_class": True}
+        )
+        merge_extension("pymdownx.extra", {"smart_enable": "all"})
+        merge_extension("pymdownx.tabbed", {"alternate_style": True})
+        merge_extension("pymdownx.tasklist", {"custom_checkbox": True})
+        merge_extension("pymdownx.tilde", {})
+        merge_extension("markdown_inline_graphviz", {})
+        merge_extension("plantuml_markdown", {})
+        merge_extension("mdx_truly_sane_lists", {})
 
-        config["markdown_extensions"].append("pymdownx.caret")
-        config["markdown_extensions"].append("pymdownx.critic")
-        config["markdown_extensions"].append("pymdownx.details")
-        config["markdown_extensions"].append("pymdownx.emoji")
-        config["mdx_configs"]["pymdownx.emoji"] = {"emoji_generator": to_svg}
-        config["markdown_extensions"].append("pymdownx.inlinehilite")
-        config["markdown_extensions"].append("pymdownx.magiclink")
-        config["markdown_extensions"].append("pymdownx.mark")
-        config["markdown_extensions"].append("pymdownx.smartsymbols")
-        config["markdown_extensions"].append("pymdownx.snippets")
-        config["markdown_extensions"].append("pymdownx.highlight")
-        config["mdx_configs"]["pymdownx.highlight"] = {
-            "linenums": True,
-            "pygments_lang_class": True,
-        }
-        config["markdown_extensions"].append("pymdownx.extra")
-        config["mdx_configs"]["pymdownx.betterem"] = {
-            "smart_enable": "all",
-        }
-        config["markdown_extensions"].append("pymdownx.tabbed")
-        config["mdx_configs"]["pymdownx.tabbed"] = {
-            "alternate_style": True,
-        }
-        config["markdown_extensions"].append("pymdownx.tasklist")
-        config["mdx_configs"]["pymdownx.tasklist"] = {
-            "custom_checkbox": True,
-        }
-        config["markdown_extensions"].append("pymdownx.tilde")
-
-        # merge individual extension configs under the pymdownx.extra extension namespace if individual extension is supplied by pymdownx.extra
+        # Merge individual extension configs under the pymdownx.extra extension namespace if individual extension is supplied by pymdownx.extra
         # https://facelessuser.github.io/pymdown-extensions/extensions/extra/
         if "pymdownx.extra" not in config["mdx_configs"]:
             config["mdx_configs"]["pymdownx.extra"] = {}
@@ -144,16 +149,5 @@ class TechDocsCore(BasePlugin):
                     "mdx_configs"
                 ][extension]
                 del config["mdx_configs"][extension]
-
-        config["markdown_extensions"].append("markdown_inline_graphviz")
-        config["markdown_extensions"].append("plantuml_markdown")
-        config["markdown_extensions"].append("mdx_truly_sane_lists")
-
-        # merge config supplied by user in the mkdocs.yml
-        for key in mdx_configs_override:
-            if key in config["mdx_configs"]:
-                default_config = config["mdx_configs"][key]
-                override_config = mdx_configs_override[key]
-                default_config.update(override_config)
 
         return config
